@@ -140,6 +140,38 @@ func FindCfgDir() (string, bool) {
 	return c[0], true
 }
 
+// DotaDirs returns every Dota 2 game/dota directory found (the parent of the
+// cfg folder). These are where pak01_dir.vpk and its numbered archives live.
+func DotaDirs() []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, root := range steamRoots() {
+		for _, lib := range libraryFolders(root) {
+			cfg := filepath.Join(lib, filepath.FromSlash(dotaCfgSubPath))
+			if fi, err := os.Stat(cfg); err != nil || !fi.IsDir() {
+				continue
+			}
+			dota := filepath.Dir(cfg) // .../game/dota
+			if seen[dota] {
+				continue
+			}
+			seen[dota] = true
+			out = append(out, dota)
+		}
+	}
+	return out
+}
+
+// FindDotaPath returns the first existing Dota game/dota directory, used to read
+// alternate portraits out of the installed game's asset archive.
+func FindDotaPath() (string, bool) {
+	dirs := DotaDirs()
+	if len(dirs) == 0 {
+		return "", false
+	}
+	return dirs[0], true
+}
+
 // Install writes the GSI cfg into override (if non-empty) or the first detected
 // Dota cfg directory, creating the gamestate_integration folder if needed. It
 // returns the written path.

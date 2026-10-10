@@ -148,6 +148,27 @@ export class Snapshot {
              */
             this["ownManual"] = false;
         }
+        if (!("visionEnabled" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["visionEnabled"] = false;
+        }
+        if (!("visionAvailable" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["visionAvailable"] = false;
+        }
+        if (!("visionStatus" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["visionStatus"] = "";
+        }
 
         Object.assign(this, $$source);
     }

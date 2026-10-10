@@ -13,6 +13,7 @@ import (
 	"counterdraft/internal/gsi"
 	"counterdraft/internal/heroes"
 	"counterdraft/internal/rules"
+	"counterdraft/internal/vision"
 )
 
 // Valid values for the side argument of the pick-editing methods.
@@ -42,6 +43,9 @@ type Snapshot struct {
 	ClickThroughOK  bool                   `json:"clickThroughSupported"`
 	EnemyManual     bool                   `json:"enemyManual"`
 	OwnManual       bool                   `json:"ownManual"`
+	VisionEnabled   bool                   `json:"visionEnabled"`
+	VisionAvailable bool                   `json:"visionAvailable"`
+	VisionStatus    string                 `json:"visionStatus"`
 }
 
 // App is the Wails-bound service. It holds references to the application and
@@ -68,11 +72,44 @@ type App struct {
 	manualOwn   []int
 	enemyManual bool
 	ownManual   bool
+
+	// Anchors the screen reader needs: our own hero and which half of the top
+	// bar is ours. Either settles the sides on its own.
+	ownHeroID int
+	ownSide   string
+	// Bans reported by GSI, used to narrow the recogniser's field.
+	bannedIDs []int
+	matchID   string
+
+	// Vision (screen reading), used when GSI carries no draft data.
+	visionEnabled   bool
+	visionAvailable bool
+	visionStatus    string
+	// visionReader is owned by the poll goroutine alone; other goroutines only
+	// set the two flags below, which that goroutine drains.
+	visionReader   *vision.DraftReader
+	visionEnemy    []int
+	visionOwn      []int
+	visionAdded    map[int]string
+	visionMissing  map[int]int
+	visionRejected map[int]bool
+	visionUnread   int
+	visionRebuild  bool
+	visionReset    bool
+	visionCancel   context.CancelFunc
 }
 
 // NewApp creates the service.
 func NewApp(app *application.App, window *application.WebviewWindow) *App {
-	return &App{app: app, window: window}
+	s := loadSettings()
+	return &App{
+		app:            app,
+		window:         window,
+		visionEnabled:  s.Vision,
+		visionAdded:    map[int]string{},
+		visionMissing:  map[int]int{},
+		visionRejected: map[int]bool{},
+	}
 }
 
 // ServiceStartup loads data and brings up the GSI listener.
@@ -98,6 +135,8 @@ func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOpt
 		ServerURL:      srv.URL(),
 		Candidates:     config.Candidates(),
 		ClickThroughOK: true,
+		VisionEnabled:  a.visionEnabled,
+		VisionStatus:   "Preparing screen reader...",
 	}
 
 	if path, err := config.Install(srv.URL(), ""); err != nil {
@@ -107,11 +146,21 @@ func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOpt
 		a.base.ConfigPath = path
 		a.base.ConfigInstalled = true
 	}
+
+	// Screen reading, in the background: the first run downloads reference art.
+	go a.ensurePortraits()
+	ctx, cancel := context.WithCancel(context.Background())
+	a.visionCancel = cancel
+	go a.visionLoop(ctx)
 	return nil
 }
 
-// ServiceShutdown stops the listener.
+// ServiceShutdown stops the listener and the screen-reading loop.
 func (a *App) ServiceShutdown() error {
+	if a.visionCancel != nil {
+		a.visionCancel()
+		a.visionCancel = nil
+	}
 	if a.server != nil {
 		_ = a.server.Close()
 	}
@@ -250,7 +299,7 @@ func (a *App) ResetSide(side string) error {
 // first edit, so manual mode starts from what was detected.
 func (a *App) beginEnemyEditLocked() []int {
 	if !a.enemyManual {
-		a.manualEnemy = append([]int(nil), a.detectedEnemy...)
+		a.manualEnemy = a.detectedEnemyLocked()
 		a.enemyManual = true
 	}
 	return a.manualEnemy
@@ -258,7 +307,7 @@ func (a *App) beginEnemyEditLocked() []int {
 
 func (a *App) beginOwnEditLocked() []int {
 	if !a.ownManual {
-		a.manualOwn = append([]int(nil), a.detectedOwn...)
+		a.manualOwn = a.detectedOwnLocked()
 		a.ownManual = true
 	}
 	return a.manualOwn
@@ -289,7 +338,30 @@ func (a *App) handleGSI(p gsi.Payload) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
+	// A new match id means a new game: drop what vision believed about the
+	// previous bar. The account id would survive a reset; vision state must not.
+	if p.Map.MatchID != "" && p.Map.MatchID != a.matchID {
+		a.matchID = p.Map.MatchID
+		a.resetVisionLocked()
+	}
+
 	a.gameState = p.Map.GameState
+	// Sticky: a payload that happens to omit the hero late in a game must not
+	// erase what an earlier payload established.
+	if p.Hero.ID > 0 {
+		a.ownHeroID = p.Hero.ID
+	}
+	// Radiant is drawn on the left of the top bar, Dire on the right - a fixed
+	// property of the HUD. GSI reports the team from the moment a draft starts,
+	// which is what makes screen reading useful in all-pick.
+	switch p.OwnTeam() {
+	case 2:
+		a.ownSide = "left"
+	case 3:
+		a.ownSide = "right"
+	}
+	a.bannedIDs = banIDs(p, a.ix)
+
 	ownTeam := p.OwnTeam()
 	if ownTeam == 0 {
 		a.detectedEnemy = nil
@@ -305,9 +377,15 @@ func (a *App) handleGSI(p gsi.Payload) {
 	a.recomputeLocked()
 }
 
+// detectedEnemyLocked is what GSI reported unioned with what the screen reader
+// read, before any manual correction.
+func (a *App) detectedEnemyLocked() []int { return unionIDs(a.detectedEnemy, a.visionEnemy) }
+
+func (a *App) detectedOwnLocked() []int { return unionIDs(a.detectedOwn, a.visionOwn) }
+
 // effectiveLocked returns the picks to use, applying manual overrides.
 func (a *App) effectiveLocked() (enemy, own []int) {
-	enemy, own = a.detectedEnemy, a.detectedOwn
+	enemy, own = a.detectedEnemyLocked(), a.detectedOwnLocked()
 	if a.enemyManual {
 		enemy = a.manualEnemy
 	}
@@ -328,6 +406,9 @@ func (a *App) recomputeLocked() {
 	snap.Recommendations = a.engine.Recommend(enemyPicks, ownPicks, 8)
 	snap.EnemyManual = a.enemyManual
 	snap.OwnManual = a.ownManual
+	snap.VisionEnabled = a.visionEnabled
+	snap.VisionAvailable = a.visionAvailable
+	snap.VisionStatus = a.visionStatus
 
 	manual := ""
 	if a.enemyManual || a.ownManual {

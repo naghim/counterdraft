@@ -104,6 +104,15 @@ export function SetDotaPath(path) {
     return $Call.ByID(2377271078, path);
 }
 
+/**
+ * SetVision enables or disables screen reading and remembers the choice.
+ * @param {boolean} enabled
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetVision(enabled) {
+    return $Call.ByID(2205184063, enabled);
+}
+
 // Private type creation functions
 const $$createType0 = $Create.Array($Create.Any);
 const $$createType1 = $models.Snapshot.createFrom;

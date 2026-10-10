@@ -6,6 +6,7 @@ import (
 	"counterdraft/internal/gsi"
 	"counterdraft/internal/heroes"
 	"counterdraft/internal/rules"
+	"counterdraft/internal/vision"
 )
 
 func newTestApp(t *testing.T) *App {
@@ -15,9 +16,12 @@ func newTestApp(t *testing.T) *App {
 		t.Fatalf("load heroes: %v", err)
 	}
 	return &App{
-		ix:     ix,
-		engine: rules.New(ix),
-		base:   Snapshot{Status: "test"},
+		ix:             ix,
+		engine:         rules.New(ix),
+		base:           Snapshot{Status: "test"},
+		visionAdded:    map[int]string{},
+		visionMissing:  map[int]int{},
+		visionRejected: map[int]bool{},
 	}
 }
 
@@ -173,5 +177,116 @@ func TestPicksForTeamUnionsDraftAndMinimap(t *testing.T) {
 	}
 	if contains(got, 5) { // Lina is radiant; must not appear on dire
 		t.Errorf("picksForTeam(3) leaked a radiant hero: %v", got)
+	}
+}
+
+func TestVisionMergesWithGSIPicks(t *testing.T) {
+	a := newTestApp(t)
+	a.handleGSI(draftWithEnemy(t)) // GSI: ally Anti-Mage (1), enemy Phantom Assassin (44)
+
+	a.mu.Lock()
+	a.applyReadingLocked(vision.DraftReading{
+		OwnSide: "left",
+		Enemies: []int{32},   // Riki, read off the bar
+		Allies:  []int{1, 2}, // Anti-Mage (already known) and Axe
+	}, 1)
+	a.mu.Unlock()
+
+	enemy := idsOf(a.base.Enemy)
+	if !contains(enemy, 44) || !contains(enemy, 32) {
+		t.Errorf("enemy = %v, want 44 (GSI) and 32 (vision)", enemy)
+	}
+	own := idsOf(a.base.Own)
+	if !contains(own, 1) || !contains(own, 2) {
+		t.Errorf("own = %v, want 1 and 2", own)
+	}
+	n := 0
+	for _, id := range own {
+		if id == 1 {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("own hero appeared %d times, want once", n)
+	}
+}
+
+func TestVisionRetractsAfterAbsence(t *testing.T) {
+	a := newTestApp(t)
+	a.mu.Lock()
+	a.applyReadingLocked(vision.DraftReading{OwnSide: "left", Enemies: []int{32}}, 0)
+	a.mu.Unlock()
+	if !contains(a.visionEnemy, 32) {
+		t.Fatalf("visionEnemy = %v, want [32]", a.visionEnemy)
+	}
+
+	// The bar no longer shows Riki; after the drop window it is taken back out.
+	for i := 0; i < visionDropAfter; i++ {
+		a.mu.Lock()
+		a.retractLocked(map[int]string{})
+		a.mu.Unlock()
+	}
+	if contains(a.visionEnemy, 32) {
+		t.Errorf("visionEnemy = %v, want Riki retracted", a.visionEnemy)
+	}
+}
+
+func TestVisionRejectedHeroIsNotReadded(t *testing.T) {
+	a := newTestApp(t)
+	a.mu.Lock()
+	a.visionRejected[32] = true
+	a.applyReadingLocked(vision.DraftReading{OwnSide: "left", Enemies: []int{32}}, 0)
+	a.mu.Unlock()
+	if contains(a.visionEnemy, 32) {
+		t.Errorf("rejected hero was re-added: %v", a.visionEnemy)
+	}
+}
+
+func TestNewMatchClearsVision(t *testing.T) {
+	a := newTestApp(t)
+	var p gsi.Payload
+	p.Player.Team = 2
+	p.Map.MatchID = "111"
+	a.handleGSI(p)
+
+	a.mu.Lock()
+	a.visionEnemy = []int{32}
+	a.visionAdded[32] = sideEnemy
+	a.mu.Unlock()
+
+	p.Map.MatchID = "222"
+	a.handleGSI(p)
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if len(a.visionEnemy) != 0 || len(a.visionAdded) != 0 {
+		t.Errorf("vision state survived a new match: %v / %v", a.visionEnemy, a.visionAdded)
+	}
+	if !a.visionReset {
+		t.Error("visionReset flag not set for the reader to clear its votes")
+	}
+}
+
+func TestHandleGSITracksVisionAnchors(t *testing.T) {
+	a := newTestApp(t)
+	var p gsi.Payload
+	p.Player.Team = 3
+	p.Hero.ID = 5
+	a.handleGSI(p)
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.ownSide != "right" {
+		t.Errorf("ownSide = %q, want right for Dire", a.ownSide)
+	}
+	if a.ownHeroID != 5 {
+		t.Errorf("ownHeroID = %d, want 5", a.ownHeroID)
+	}
+}
+
+func TestVisionDisabledByDefaultInTests(t *testing.T) {
+	a := newTestApp(t)
+	if a.visionEnabled {
+		t.Error("test app should not have vision enabled")
 	}
 }

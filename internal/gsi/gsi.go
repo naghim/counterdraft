@@ -38,7 +38,7 @@ type Payload struct {
 		ID   int    `json:"id"`
 		Name string `json:"name"`
 	} `json:"hero"`
-	Draft   Draft                    `json:"draft"`
+	Draft   Draft                     `json:"draft"`
 	Minimap map[string]MinimapElement `json:"minimap"`
 }
 
@@ -96,6 +96,17 @@ func (t TeamDraft) Picks() []int {
 // "npc_dota_hero_axe".
 func (t TeamDraft) PickClasses() []string {
 	return nonEmpty(t.Pick0Class, t.Pick1Class, t.Pick2Class, t.Pick3Class, t.Pick4Class)
+}
+
+// Bans returns the non-empty ban ids for the team. Dota reports bans even in
+// all-pick modes, which is what lets the screen reader rule banned heroes out.
+func (t TeamDraft) Bans() []int {
+	return nonZero(t.Ban0ID, t.Ban1ID, t.Ban2ID, t.Ban3ID, t.Ban4ID, t.Ban5ID)
+}
+
+// BanClasses returns the non-empty ban hero names for the team.
+func (t TeamDraft) BanClasses() []string {
+	return nonEmpty(t.Ban0Class, t.Ban1Class, t.Ban2Class, t.Ban3Class, t.Ban4Class, t.Ban5Class)
 }
 
 func nonZero(ids ...int) []int {

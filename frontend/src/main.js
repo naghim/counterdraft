@@ -28,6 +28,7 @@ app.innerHTML = `
     <div class="header">
       <span class="dot" id="dot"></span>
       <span class="title">counterdraft</span>
+      <button class="icon-btn" id="vision" title="Toggle screen reading">vision</button>
       <button class="icon-btn" id="lock" title="Toggle mouse click-through">lock</button>
       <button class="icon-btn" id="quit" title="Quit">x</button>
     </div>
@@ -42,6 +43,7 @@ app.innerHTML = `
     </div>
     <div class="footer">
       <div class="path" id="path"></div>
+      <div class="path" id="visionStatus"></div>
       <div class="row">
         <button id="install">Install GSI config</button>
         <button class="secondary" id="recheck">Re-detect</button>
@@ -53,7 +55,7 @@ app.innerHTML = `
 
 const el = {};
 for (const id of ['dot', 'status', 'enemy', 'own', 'recs', 'path', 'message',
-  'lock', 'quit', 'install', 'recheck',
+  'lock', 'quit', 'install', 'recheck', 'vision', 'visionStatus',
   'enemyManualTag', 'enemyReset', 'enemyAdd', 'enemyPicker', 'enemySelect', 'enemyConfirm',
   'ownManualTag', 'ownReset', 'ownAdd', 'ownPicker', 'ownSelect', 'ownConfirm']) {
   el[id] = document.getElementById(id);
@@ -150,6 +152,13 @@ function render(s) {
   el.lock.title = s.clickThroughSupported
     ? 'Toggle mouse click-through'
     : 'Click-through is only implemented on Windows';
+
+  el.vision.className = 'icon-btn' + (s.visionEnabled ? ' active' : '');
+  el.vision.title = s.visionAvailable
+    ? 'Toggle screen reading (reads enemy picks from the top bar)'
+    : 'Screen reading unavailable';
+  el.visionStatus.textContent = s.visionStatus || '';
+  el.visionStatus.hidden = !s.visionStatus;
 }
 
 function flash(msg) {
@@ -197,6 +206,14 @@ for (const side of ['enemy', 'own']) {
 el.lock.addEventListener('click', async () => {
   try {
     await App.SetClickThrough(!state.clickThrough);
+  } catch (err) {
+    flash(String(err));
+  }
+});
+
+el.vision.addEventListener('click', async () => {
+  try {
+    await App.SetVision(!state.visionEnabled);
   } catch (err) {
     flash(String(err));
   }

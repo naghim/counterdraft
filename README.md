@@ -13,9 +13,12 @@ This is a helper tool that assists in picking heroes in the popular MOBA called 
 **No, they shouldn't.** Hero picks are detected using Valve's own Game State Integration system, which violates no Valve policy.
 You can also manually enter the heroes, if you want to feel absolutely safe. Then it just runs as any other completely isolated program that won't bother Steam/Dota 2 (think of Google Chrome, or Discord).
 
+When GSI does not report the draft (all-pick modes never send the enemy picks), counterdraft can additionally read the top bar **off your own screen**, exactly as OBS or any recorder does. That path never touches Dota's process, its memory or its files, and it automates no input. It is off by one click in the overlay if you would rather it stayed off.
+
 ## Features
 
 - **Live draft detection** via Dota 2's official Game State Integration (GSI) - the game pushes its own state to a local listener.
+- **Screen reading fallback** for when GSI carries no draft data (all-pick): the enemy portraits on the top bar are matched against Valve's own hero art, in memory, during hero selection.
 - **Counter suggestions** based on the enemy team's aggregate mechanical traits (evasion, invisibility, heavy healing, summons, etc.).
 - **Synergy suggestions** that fill gaps in your own lineup (no hard disable, no wave clear, no sustain, greedy late-game comp, ...).
 - **Manual pick editing** with a hero picker, plus _reset_ to fall back to detection - fix a mis-read draft, or play fully offline.
@@ -32,6 +35,8 @@ Nothing reads the game's memory, injects code, or hooks the process. The only fi
 ```
 <Steam>/steamapps/common/dota 2 beta/game/dota/cfg/gamestate_integration/gamestate_integration_counterdraft.cfg
 ```
+
+When the draft block is empty - as it always is in all-pick - counterdraft falls back to reading the top bar off the screen (`internal/vision`). It captures the primary display, crops the ten portrait slots using layout fractions measured from a real 1920x1080 capture, and matches each crop against reference hero art by normalised cross-correlation. The reference art is Valve's own: 127 defaults downloaded from the CDN, plus alternate portraits (arcanas, immortal sets, personas) decoded out of the installed game's VPK archive. A slot is only accepted when a match clears both a similarity threshold and a clear margin over the runner-up, and when the same hero wins the slot across several frames - a wrong hero silently poisons every recommendation, so the reader refuses rather than guesses.
 
 Recommendations come from a **hand-authored mechanical tag table** (`internal/heroes/heroes.json`), not from win-rate statistics. Each hero is tagged with what its kit does (e.g. `stun`, `invis`, `illusions`, `anti_heal`, `summons`). The engine (`internal/rules`) matches those tags against rules such as _"enemy relies on evasion → recommend magic/pure damage or Break"_, weighting each hit and stopping at the top candidates.
 
@@ -80,7 +85,8 @@ The binary is written to `bin/` (or to `bin/<os>_<arch>/` when cross-compiling).
 │   ├── config/              # GSI cfg rendering + Steam/Dota install detection
 │   ├── gsi/                 # GSI HTTP listener and payload parsing
 │   ├── heroes/              # Embedded hero table + tag index
-│   └── rules/               # Tag-based counter/synergy recommendation engine
+│   ├── rules/               # Tag-based counter/synergy recommendation engine
+│   └── vision/              # Screen capture, portrait recognition, VPK/vtex reading
 ├── frontend/                # Vite + vanilla JS overlay UI
 │   └── bindings/            # Generated JS bindings (wails3 generate bindings)
 ├── build/                   # Wails v3 build assets and per-OS Taskfiles
