@@ -104,6 +104,26 @@ python3 tools/gen_heroes.py > internal/heroes/heroes.json
 
 Keep the tag vocabulary in sync with the rule definitions in `internal/rules/rules.go`. When adding a hero, give it mechanical tags and merge it into the `TAGS` map.
 
+## Calibrating screen reading
+
+Screen reading is template matching, so a missed slot is almost always one of two things: **geometry** (the portrait boxes do not sit where they should for your resolution, aspect ratio or Dota UI scale) or **thresholds** (a team-tinted or badge-covered portrait scores below the cut). Two tools tell the cases apart:
+
+```sh
+# One frame: saves a capture with the ten slot boxes drawn over it, and prints
+# what each slot matched, with the similarity and margin that decided it.
+# Run while a draft is on screen; the boxes should sit on the portraits.
+go run ./tools/visioncheck --own <heroID> --side left
+
+# Continuous labeled collection: runs its own GSI listener and, during hero
+# selection and strategy time, writes a screenshot plus a JSON sidecar naming
+# the heroes GSI reported (draft picks/bans and the strategy-time minimap).
+go run ./tools/visioncollect --port 3000 --install
+```
+
+Both write to the user data directory (`vision.CaptureDir()`); the collector prints its target on start. The overlay and the collector cannot both own the GSI config, so close the overlay while collecting, or use `--install` to repoint the config at the collector. Captures are development material and are never sent anywhere.
+
+If `visioncheck` shows the boxes off the portraits, adjust the fractions at the top of `internal/vision/layout.go`. If the boxes are right and slots are still refused, the collected frames hold the real bar art to build better templates from.
+
 ## Tests
 
 ```sh

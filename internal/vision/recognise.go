@@ -29,10 +29,32 @@ const (
 // The two errors are not symmetric. Refusing a real portrait costs the user one
 // typed name; accepting an empty slot silently poisons every recommendation
 // that follows. So when in doubt, refuse.
-const (
-	MinSimilarity = 0.55
+//
+// The margin is the load-bearing guard: an empty panel can reach 0.364
+// similarity but its margin tops out near 0.050, while a real portrait's margin
+// starts at 0.354. Lowering the similarity cut a little is low-risk; lowering
+// the margin cut invites empty panels back in.
+//
+// These are variables rather than constants so they can be tuned with
+// COUNTERDRAFT_MIN_SIMILARITY / COUNTERDRAFT_MIN_MARGIN (or the visioncheck
+// flags) without a rebuild. The defaults are the measured mid-gap values.
+var (
+	MinSimilarity = 0.35
 	MinMargin     = 0.18
 )
+
+func init() {
+	if v := os.Getenv("COUNTERDRAFT_MIN_SIMILARITY"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			MinSimilarity = f
+		}
+	}
+	if v := os.Getenv("COUNTERDRAFT_MIN_MARGIN"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			MinMargin = f
+		}
+	}
+}
 
 // Below this, a crop carries no structure worth matching. An empty slot is a
 // flat panel, and dividing its float rounding error by its own tiny norm yields

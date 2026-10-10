@@ -148,7 +148,7 @@ func (d *DraftReader) Read(img image.Image, ownHeroID int, ownSide string, exclu
 	var unresolved []string
 
 	for _, slot := range Slots(img.Bounds().Dx(), img.Bounds().Dy()) {
-		match := d.ident.Identify(cropImage(img, slot.Box), blocked)
+		match := d.ident.Identify(Crop(img, slot.Box), blocked)
 		heroID := d.vote(slot.Name(), match.HeroID)
 		if heroID == 0 {
 			unresolved = append(unresolved, slot.Name())
@@ -206,8 +206,9 @@ func (d *DraftReader) Read(img image.Image, ownHeroID int, ownSide string, exclu
 	return reading
 }
 
-// cropImage returns the sub-image inside box, clamped to the image bounds.
-func cropImage(img image.Image, box image.Rectangle) image.Image {
+// Crop returns the sub-image inside box, clamped to the image bounds. It is
+// exported so diagnostic tools can crop the same slots the reader does.
+func Crop(img image.Image, box image.Rectangle) image.Image {
 	box = box.Intersect(img.Bounds())
 	if box.Empty() {
 		return image.NewRGBA(image.Rect(0, 0, 1, 1))
