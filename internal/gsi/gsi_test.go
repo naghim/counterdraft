@@ -72,25 +72,40 @@ func TestDraftPicksAndOwnTeam(t *testing.T) {
 	}
 }
 
-func TestOwnTeamFallsBackToActiveHero(t *testing.T) {
+func TestOwnTeamFromTeamName(t *testing.T) {
 	var got Payload
 	s := New("127.0.0.1", 0, func(p Payload) { got = p })
 
-	// No player.team; the local hero is on team 3.
+	// Dota reports the local team as a string in team_name, not a numeric team.
 	body := `{
       "hero": {"id": 32},
-      "players": {
-        "0": {"team": 3, "hero_id": 32},
-        "1": {"team": 2, "hero_id": 1}
-      }
+      "player": {"team_name": "dire"}
     }`
 	post(t, s, body)
 	if team := got.OwnTeam(); team != 3 {
 		t.Errorf("OwnTeam = %d, want 3", team)
 	}
-	t2, t3 := got.PlayerTeams()
-	if len(t2) != 1 || t2[0] != 1 || len(t3) != 1 || t3[0] != 32 {
-		t.Errorf("player teams = %v / %v, want [1] / [32]", t2, t3)
+}
+
+func TestMinimapHeroesGroupsByTeam(t *testing.T) {
+	var got Payload
+	s := New("127.0.0.1", 0, func(p Payload) { got = p })
+
+	body := `{
+      "minimap": {
+        "0": {"unitname": "npc_dota_hero_axe", "team": "radiant"},
+        "1": {"unitname": "npc_dota_hero_axe", "team": "radiant"},
+        "2": {"unitname": "npc_dota_hero_lina", "team": "dire"},
+        "3": {"unitname": "npc_dota_creep_badguys_melee", "team": "dire"}
+      }
+    }`
+	post(t, s, body)
+	t2, t3 := got.MinimapHeroes()
+	if len(t2) != 1 || t2[0] != "npc_dota_hero_axe" {
+		t.Errorf("team2 heroes = %v, want [npc_dota_hero_axe]", t2)
+	}
+	if len(t3) != 1 || t3[0] != "npc_dota_hero_lina" {
+		t.Errorf("team3 heroes = %v, want [npc_dota_hero_lina]", t3)
 	}
 }
 

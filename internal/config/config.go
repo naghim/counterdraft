@@ -39,7 +39,7 @@ func Content(uri string) string {
         "abilities" "1"
         "items"     "1"
         "draft"     "1"
-        "players"   "1"
+        "minimap"   "1"
         "wearables" "0"
     }
 }

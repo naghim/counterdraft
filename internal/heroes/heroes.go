@@ -28,6 +28,7 @@ type Index struct {
 	all    []*Hero
 	byID   map[int]*Hero
 	byName map[string]*Hero
+	byNpc  map[string]*Hero
 	tags   map[int]map[string]bool
 }
 
@@ -41,11 +42,13 @@ func Load() (*Index, error) {
 		all:    list,
 		byID:   make(map[int]*Hero, len(list)),
 		byName: make(map[string]*Hero, len(list)),
+		byNpc:  make(map[string]*Hero, len(list)),
 		tags:   make(map[int]map[string]bool, len(list)),
 	}
 	for _, h := range list {
 		ix.byID[h.ID] = h
 		ix.byName[h.LocalizedName] = h
+		ix.byNpc[h.Name] = h
 		set := make(map[string]bool, len(h.Tags))
 		for _, t := range h.Tags {
 			set[t] = true
@@ -67,6 +70,13 @@ func (ix *Index) ByID(id int) (*Hero, bool) {
 // ByName looks up a hero by its localized (display) name.
 func (ix *Index) ByName(name string) (*Hero, bool) {
 	h, ok := ix.byName[name]
+	return h, ok
+}
+
+// ByNpcName looks up a hero by its internal entity name, e.g.
+// "npc_dota_hero_axe" as reported in the GSI minimap block.
+func (ix *Index) ByNpcName(name string) (*Hero, bool) {
+	h, ok := ix.byNpc[name]
 	return h, ok
 }
 

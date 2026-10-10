@@ -60,7 +60,7 @@ func TestContentPointsAtURI(t *testing.T) {
 	for _, want := range []string{
 		`"uri"       "http://127.0.0.1:4000/"`,
 		`"draft"     "1"`,
-		`"players"   "1"`,
+		`"minimap"   "1"`,
 		`"provider"  "1"`,
 	} {
 		if !strings.Contains(got, want) {

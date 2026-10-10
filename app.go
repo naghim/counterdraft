@@ -299,8 +299,8 @@ func (a *App) handleGSI(p gsi.Payload) {
 		if ownTeam == 3 {
 			enemyTeam = 2
 		}
-		a.detectedOwn = picksForTeam(p, ownTeam)
-		a.detectedEnemy = picksForTeam(p, enemyTeam)
+		a.detectedOwn = picksForTeam(p, ownTeam, a.ix)
+		a.detectedEnemy = picksForTeam(p, enemyTeam, a.ix)
 	}
 	a.recomputeLocked()
 }
@@ -335,7 +335,7 @@ func (a *App) recomputeLocked() {
 	}
 	switch {
 	case len(enemyPicks) == 0 && len(ownPicks) == 0:
-		snap.Status = "Draft detected. Waiting for picks..." + manual
+		snap.Status = "In match. No heroes visible yet; picks show up as they are made." + manual
 	case len(enemyPicks) == 0:
 		snap.Status = fmt.Sprintf("%d ally pick(s). No enemy picks yet.%s", len(ownPicks), manual)
 	default:
@@ -376,9 +376,13 @@ func startServer(handler gsi.Handler) (int, *gsi.Server, error) {
 	return 0, nil, lastErr
 }
 
-// picksForTeam unions draft picks with per-player hero ids for one team, which
-// covers both Captain's Mode (draft block) and All Pick (players block).
-func picksForTeam(p gsi.Payload, team int) []int {
+// picksForTeam unions every source GSI offers for one team's heroes:
+//   - the draft block (Captain's Mode and other draft modes), reported as both
+//     numeric ids and hero class names;
+//   - the local player's own hero, always present via the hero block;
+//   - the minimap, the only place GSI exposes other players' heroes in
+//     non-draft modes such as All Pick and New Player mode.
+func picksForTeam(p gsi.Payload, team int, ix *heroes.Index) []int {
 	var d gsi.TeamDraft
 	if team == 2 {
 		d = p.Draft.Team2
@@ -387,7 +391,7 @@ func picksForTeam(p gsi.Payload, team int) []int {
 	}
 	seen := map[int]bool{}
 	var out []int
-	add := func(ids []int) {
+	add := func(ids ...int) {
 		for _, id := range ids {
 			if id > 0 && !seen[id] {
 				seen[id] = true
@@ -395,12 +399,24 @@ func picksForTeam(p gsi.Payload, team int) []int {
 			}
 		}
 	}
-	add(d.Picks())
-	t2, t3 := p.PlayerTeams()
+	add(d.Picks()...)
+	for _, name := range d.PickClasses() {
+		if h, ok := ix.ByNpcName(name); ok {
+			add(h.ID)
+		}
+	}
+	if team == p.OwnTeam() && p.Hero.ID > 0 {
+		add(p.Hero.ID)
+	}
+	m2, m3 := p.MinimapHeroes()
+	names := m3
 	if team == 2 {
-		add(t2)
-	} else {
-		add(t3)
+		names = m2
+	}
+	for _, name := range names {
+		if h, ok := ix.ByNpcName(name); ok {
+			add(h.ID)
+		}
 	}
 	return out
 }

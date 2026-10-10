@@ -156,16 +156,22 @@ func TestHeroesSortedByName(t *testing.T) {
 	}
 }
 
-func TestPicksForTeamUnionsDraftAndPlayers(t *testing.T) {
+func TestPicksForTeamUnionsDraftAndMinimap(t *testing.T) {
+	a := newTestApp(t)
+
 	var p gsi.Payload
-	p.Draft.Team3.Pick0ID = 44
-	p.Players = map[string]gsi.PlayerState{
-		"0": {Team: 3, HeroID: 44},
-		"1": {Team: 3, HeroID: 32},
-		"2": {Team: 2, HeroID: 1},
+	p.Draft.Team3.Pick0ID = 44 // Phantom Assassin from the draft block
+	p.Draft.Team3.Pick1Class = "npc_dota_hero_riki"
+	p.Minimap = map[string]gsi.MinimapElement{
+		"0": {UnitName: "npc_dota_hero_axe", Team: "dire"},
+		"1": {UnitName: "npc_dota_hero_axe", Team: "dire"}, // duplicate ignored
+		"2": {UnitName: "npc_dota_hero_lina", Team: "radiant"},
 	}
-	got := picksForTeam(p, 3)
-	if len(got) != 2 || got[0] != 44 || got[1] != 32 {
-		t.Errorf("picksForTeam(3) = %v, want [44 32]", got)
+	got := picksForTeam(p, 3, a.ix)
+	if !contains(got, 44) || !contains(got, 32) || !contains(got, 2) {
+		t.Errorf("picksForTeam(3) = %v, want it to contain 44 (draft id), 32 (draft class), 2 (minimap)", got)
+	}
+	if contains(got, 5) { // Lina is radiant; must not appear on dire
+		t.Errorf("picksForTeam(3) leaked a radiant hero: %v", got)
 	}
 }
