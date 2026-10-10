@@ -1,16 +1,8 @@
 import './style.css';
 import './app.css';
 
-import {EventsOn, Quit} from '../wailsjs/runtime/runtime';
-import {
-  GetState,
-  InstallConfig,
-  SetClickThrough,
-  Heroes,
-  AddPick,
-  RemovePick,
-  ResetSide,
-} from '../wailsjs/go/main/App';
+import {Application, Events} from '@wailsio/runtime';
+import {App} from '../bindings/counterdraft';
 
 const app = document.querySelector('#app');
 
@@ -169,7 +161,7 @@ function flash(msg) {
 
 async function removePick(side, id) {
   try {
-    await RemovePick(side, id);
+    await App.RemovePick(side, id);
   } catch (err) {
     flash(String(err));
   }
@@ -179,7 +171,7 @@ async function addPick(side) {
   const sel = el[side + 'Select'];
   if (!sel.value) return;
   try {
-    await AddPick(side, Number(sel.value));
+    await App.AddPick(side, Number(sel.value));
     setPicker(side, false);
   } catch (err) {
     flash(String(err));
@@ -195,7 +187,7 @@ for (const side of ['enemy', 'own']) {
   el[side + 'Confirm'].addEventListener('click', () => addPick(side));
   el[side + 'Reset'].addEventListener('click', async () => {
     try {
-      await ResetSide(side);
+      await App.ResetSide(side);
     } catch (err) {
       flash(String(err));
     }
@@ -204,30 +196,30 @@ for (const side of ['enemy', 'own']) {
 
 el.lock.addEventListener('click', async () => {
   try {
-    await SetClickThrough(!state.clickThrough);
+    await App.SetClickThrough(!state.clickThrough);
   } catch (err) {
     flash(String(err));
   }
 });
 
-el.quit.addEventListener('click', () => Quit());
+el.quit.addEventListener('click', () => Application.Quit());
 
 el.install.addEventListener('click', async () => {
   try {
-    flash('GSI config written: ' + (await InstallConfig()));
+    flash('GSI config written: ' + (await App.InstallConfig()));
   } catch (err) {
     flash('Install failed: ' + err);
   }
 });
 
 el.recheck.addEventListener('click', async () => {
-  render(await GetState());
+  render(await App.GetState());
   flash('Re-detected Dota 2 install locations.');
 });
 
-EventsOn('draft:update', render);
-GetState().then(render).catch(err => flash(String(err)));
-Heroes().then(h => {
+Events.On('draft:update', e => render(e.data));
+App.GetState().then(render).catch(err => flash(String(err)));
+App.Heroes().then(h => {
   heroList = h || [];
   if (pickerOpen.enemy) populateSelect('enemy');
   if (pickerOpen.own) populateSelect('own');

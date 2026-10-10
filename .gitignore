@@ -1,3 +1,15 @@
-build/bin
-node_modules
+# Wails v3 build output
+bin
+.task
+
+# Frontend
 frontend/dist
+frontend/node_modules
+
+# Platform build artifacts
+build/linux/appimage/build
+build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
+build/ios/xcode/overlay.json
+build/ios/xcode/gen/
+build/android/overlay.json
+build/android/gen/

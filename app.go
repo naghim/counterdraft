@@ -4,11 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"runtime"
 	"sort"
 	"sync"
 
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"counterdraft/internal/config"
 	"counterdraft/internal/gsi"
@@ -45,9 +44,12 @@ type Snapshot struct {
 	OwnManual       bool                   `json:"ownManual"`
 }
 
-// App is the Wails-bound application object.
+// App is the Wails-bound service. It holds references to the application and
+// its overlay window so it can emit events and toggle click-through.
 type App struct {
-	ctx    context.Context
+	app    *application.App
+	window *application.WebviewWindow
+
 	ix     *heroes.Index
 	engine *rules.Engine
 	server *gsi.Server
@@ -68,17 +70,17 @@ type App struct {
 	ownManual   bool
 }
 
-// NewApp creates the application.
-func NewApp() *App { return &App{} }
+// NewApp creates the service.
+func NewApp(app *application.App, window *application.WebviewWindow) *App {
+	return &App{app: app, window: window}
+}
 
-// startup loads data and brings up the GSI listener.
-func (a *App) startup(ctx context.Context) {
-	a.ctx = ctx
-
+// ServiceStartup loads data and brings up the GSI listener.
+func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
 	ix, err := heroes.Load()
 	if err != nil {
 		log.Printf("counterdraft: load heroes: %v", err)
-		return
+		return nil
 	}
 	a.ix = ix
 	a.engine = rules.New(ix)
@@ -87,7 +89,7 @@ func (a *App) startup(ctx context.Context) {
 	if err != nil {
 		log.Printf("counterdraft: start gsi server: %v", err)
 		a.base.Status = fmt.Sprintf("Could not start GSI listener: %v", err)
-		return
+		return nil
 	}
 	a.server = srv
 
@@ -95,7 +97,7 @@ func (a *App) startup(ctx context.Context) {
 		Status:         "Listening. Waiting for Dota 2...",
 		ServerURL:      srv.URL(),
 		Candidates:     config.Candidates(),
-		ClickThroughOK: runtime.GOOS == "windows",
+		ClickThroughOK: true,
 	}
 
 	if path, err := config.Install(srv.URL(), ""); err != nil {
@@ -105,13 +107,15 @@ func (a *App) startup(ctx context.Context) {
 		a.base.ConfigPath = path
 		a.base.ConfigInstalled = true
 	}
+	return nil
 }
 
-// shutdown stops the listener.
-func (a *App) shutdown(ctx context.Context) {
+// ServiceShutdown stops the listener.
+func (a *App) ServiceShutdown() error {
 	if a.server != nil {
 		_ = a.server.Close()
 	}
+	return nil
 }
 
 // GetState returns the current snapshot for the UI to render on load.
@@ -159,9 +163,10 @@ func (a *App) ConfigCandidates() []string { return config.Candidates() }
 
 // SetClickThrough enables or disables mouse-input passthrough on the overlay.
 func (a *App) SetClickThrough(enabled bool) error {
-	if err := setClickThrough(enabled); err != nil {
-		return err
+	if a.window == nil {
+		return fmt.Errorf("overlay window is not available")
 	}
+	a.window.SetIgnoreMouseEvents(enabled)
 	a.mu.Lock()
 	a.clickThru = enabled
 	a.base.ClickThrough = enabled
@@ -343,10 +348,10 @@ func (a *App) recomputeLocked() {
 }
 
 func (a *App) emit(snap Snapshot) {
-	if a.ctx == nil {
+	if a.app == nil {
 		return
 	}
-	wruntime.EventsEmit(a.ctx, "draft:update", snap)
+	a.app.Event.Emit("draft:update", snap)
 }
 
 func (a *App) refs(ids []int) []HeroRef {

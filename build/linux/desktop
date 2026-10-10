@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=counterdraft
+Comment=Dota 2 draft overlay with live counter and synergy suggestions
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/counterdraft %u
+Terminal=false
+Type=Application
+Icon=counterdraft
+Categories=Utility;
+StartupWMClass=counterdraft
+
+ 

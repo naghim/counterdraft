@@ -20,7 +20,7 @@ You can also manually enter the heroes, if you want to feel absolutely safe. The
 - **Synergy suggestions** that fill gaps in your own lineup (no hard disable, no wave clear, no sustain, greedy late-game comp, ...).
 - **Manual pick editing** with a hero picker, plus _reset_ to fall back to detection - fix a mis-read draft, or play fully offline.
 - **Explainable recommendations**: every suggestion lists the reasons it scored, and candidates are de-duplicated against already-picked heroes.
-- **Transparent, frameless, click-through overlay** that stays on top of the game. On Windows you can toggle mouse passthrough so clicks reach Dota 2; drag the header on other platforms.
+- **Transparent, frameless, click-through overlay** that stays on top of the game. Toggle mouse passthrough so clicks reach Dota 2 directly, or drag the window by its header to reposition it.
 - **Automatic GSI config install** - detects your Steam/Dota 2 install (including extra Steam libraries) and writes the `.cfg` for you.
 
 ## How it works
@@ -41,13 +41,13 @@ Recommendations come from a **hand-authored mechanical tag table** (`internal/he
 
 - [Go](https://go.dev/dl/) 1.25+
 - [Node.js](https://nodejs.org/) (for the frontend build)
-- The [Wails CLI](https://wails.io/docs/gettingstarted/installation): `go install github.com/wailsapp/wails/v2/cmd/wails@latest`
-- Linux only: the WebKit2GTK development headers (see the Wails docs for your distro)
+- The [Wails v3 CLI](https://v3.wails.io/): `go install github.com/wailsapp/wails/v3/cmd/wails3@latest`
+- Linux only: the WebKit2GTK 4.1 development headers (see the Wails docs for your distro)
 
 ### Run in development
 
 ```sh
-wails dev
+wails3 dev
 ```
 
 This starts the Vite dev server with hot reload and launches the overlay. It binds the first free port in the `4000–4010` range for GSI and installs the config on startup.
@@ -55,10 +55,10 @@ This starts the Vite dev server with hot reload and launches the overlay. It bin
 ### Build a release binary
 
 ```sh
-wails build
+wails3 build
 ```
 
-The binary is written to `build/bin/`.
+The binary is written to `bin/` (or to `bin/<os>_<arch>/` when cross-compiling).
 
 ## Usage
 
@@ -66,7 +66,7 @@ The binary is written to `build/bin/`.
 2. If detection fails, click **Re-detect**, or use **Install GSI config**.
 3. Start a match. Picks appear as the game reports them and the **Recommendations** list updates live.
 4. To correct or force a pick, use **+** next to a team to open the hero picker. Adding or removing a pick switches that team to _manual_ mode; click **reset** to resume following detection.
-5. On Windows, the **lock** button toggles mouse click-through so the overlay ignores input and clicks reach the game. On other platforms, drag the window by its header.
+5. The **lock** button toggles mouse click-through so the overlay ignores input and clicks reach the game. With click-through off, drag the window by its header.
 
 > If you supplied a custom Dota path, the GSI config is written into it; otherwise counterdraft uses the first detected install.
 
@@ -74,15 +74,17 @@ The binary is written to `build/bin/`.
 
 ```
 .
-├── main.go                  # Wails bootstrap: window options, asset embedding
-├── app.go                   # Bound application object (state, picks, snapshot)
-├── overlay*.go              # Per-OS click-through window handling
+├── main.go                  # Wails bootstrap: app/window options, asset embedding
+├── app.go                   # Bound service (state, picks, snapshot, click-through)
 ├── internal/
 │   ├── config/              # GSI cfg rendering + Steam/Dota install detection
 │   ├── gsi/                 # GSI HTTP listener and payload parsing
 │   ├── heroes/              # Embedded hero table + tag index
 │   └── rules/               # Tag-based counter/synergy recommendation engine
 ├── frontend/                # Vite + vanilla JS overlay UI
+│   └── bindings/            # Generated JS bindings (wails3 generate bindings)
+├── build/                   # Wails v3 build assets and per-OS Taskfiles
+├── Taskfile.yml             # Wails v3 task entry points (build, dev, package)
 └── tools/gen_heroes.py      # Regenerates the embedded hero table
 ```
 
@@ -99,8 +101,10 @@ Keep the tag vocabulary in sync with the rule definitions in `internal/rules/rul
 ## Tests
 
 ```sh
-go test ./...
+go test . ./internal/...
 ```
+
+(`go test ./...` also walks the platform scaffolding under `build/`, which has build-tag-constrained `main` packages that only compile for their target OS.)
 
 ## Platform support
 
@@ -108,4 +112,4 @@ go test ./...
 | ------------------- | :-----: | :---: | :---: |
 | GSI draft detection |    ✔    |   ✔   |   ✔   |
 | Overlay UI          |    ✔    |   ✔   |   ✔   |
-| Mouse click-through |    ✔    |   —   |   —   |
+| Mouse click-through |    ✔    |   ✔   |   ✔   |
